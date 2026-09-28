@@ -1,11 +1,32 @@
 #!/usr/bin/env bash
-# NO CREDS IN REMOTES EVER — operator's rule, 2026-09-28.
-#
-# Runs on every commit from this working tree, whoever made it: psykes, a Claude Code
-# session, or a human. Enforcing it only in the agent's own hooks would bind psykes and
-# nobody else, and a credential committed by hand reaches the remote exactly as fast.
-#
-# Installed via `git config core.hooksPath .githooks`, so it is version-controlled and
-# travels with the repo instead of living in an untracked .git/hooks that no clone gets.
+# Two gates, in the order that matters: never publish a credential, and never commit
+# straight to main.
 set -euo pipefail
-exec "$(git rev-parse --show-toplevel)/bin/scan-secrets.py" --staged
+ROOT="$(git rev-parse --show-toplevel)"
+
+# --- gate 1: branch discipline -------------------------------------------------------
+# Work happens on dev. main moves only by merging dev into it after QA, which is a
+# fast-forward or a merge commit — neither reaches this hook the way a fresh commit does.
+# Stated as a rule it would be a convention; stated here it is the shape of the workflow.
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+if [[ "$branch" == "main" ]] && [[ ! -f "$ROOT/.git/MERGE_HEAD" ]]; then
+  cat >&2 <<'MSG'
+REFUSED: direct commit to main.
+
+Work goes on dev:
+
+    git checkout dev
+    git commit ...
+    # QA, review, tweaks
+    git checkout main && git merge --ff-only dev && git push
+
+main is what has been reviewed. A commit that lands there without passing through dev
+has been reviewed by nobody, and the branch stops meaning anything.
+MSG
+  exit 1
+fi
+
+# --- gate 2: no credentials, ever ----------------------------------------------------
+# Runs on every commit from this tree, whoever made it: psykes, a Claude Code session, or
+# a human. Enforcing it only in the agent's own hooks would bind psykes and nobody else.
+exec "$ROOT/bin/scan-secrets.py" --staged
