@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# NO CREDS IN REMOTES EVER — operator's rule, 2026-09-28.
+#
+# Runs on every commit from this working tree, whoever made it: psykes, a Claude Code
+# session, or a human. Enforcing it only in the agent's own hooks would bind psykes and
+# nobody else, and a credential committed by hand reaches the remote exactly as fast.
+#
+# Installed via `git config core.hooksPath .githooks`, so it is version-controlled and
+# travels with the repo instead of living in an untracked .git/hooks that no clone gets.
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/bin/scan-secrets.py" --staged
